@@ -4,48 +4,46 @@ import (
 	"github.com/tliron/puccini/ard"
 	"github.com/tliron/puccini/clout"
 	"github.com/tliron/puccini/common"
-	"github.com/tliron/puccini/js"
 	"github.com/tliron/puccini/tosca/normal"
 )
 
 func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
-	c := clout.NewClout()
+	clout_ := clout.NewClout()
 
-	timestamp, err := common.Timestamp()
-	if err != nil {
-		return nil, err
-	}
-
-	metadata := make(ard.Map)
-	for name, jsEntry := range s.ScriptNamespace {
-		sourceCode, err := jsEntry.GetSourceCode()
+	metadata := make(ard.StringMap)
+	for name, scriptlet := range s.ScriptletNamespace {
+		scriptlet, err := scriptlet.Read()
 		if err != nil {
 			return nil, err
 		}
-		err = js.SetMapNested(metadata, name, sourceCode)
-		if err != nil {
+		if err = ard.StringMapPutNested(metadata, name, scriptlet); err != nil {
 			return nil, err
 		}
 	}
-	c.Metadata["puccini-js"] = metadata
+	clout_.Metadata["puccini-js"] = metadata
 
-	metadata = make(ard.Map)
-	metadata["version"] = "1.0"
-	metadata["history"] = []string{timestamp}
-	c.Metadata["puccini-tosca"] = metadata
+	history := ard.List{ard.StringMap{
+		"timestamp":   common.Timestamp(),
+		"description": "compile",
+	}}
 
-	tosca := make(ard.Map)
+	metadata = make(ard.StringMap)
+	metadata["version"] = VERSION
+	metadata["history"] = history
+	clout_.Metadata["puccini-tosca"] = metadata
+
+	tosca := make(ard.StringMap)
 	tosca["description"] = s.Description
 	tosca["metadata"] = s.Metadata
 	tosca["inputs"] = s.Inputs
 	tosca["outputs"] = s.Outputs
-	c.Properties["tosca"] = tosca
+	clout_.Properties["tosca"] = tosca
 
 	nodeTemplates := make(map[string]*clout.Vertex)
 
 	// Node templates
 	for _, nodeTemplate := range s.NodeTemplates {
-		v := c.NewVertex(clout.NewKey())
+		v := clout_.NewVertex(clout.NewKey())
 
 		nodeTemplates[nodeTemplate.Name] = v
 
@@ -56,34 +54,17 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 		v.Properties["directives"] = nodeTemplate.Directives
 		v.Properties["properties"] = nodeTemplate.Properties
 		v.Properties["attributes"] = nodeTemplate.Attributes
+		v.Properties["requirements"] = nodeTemplate.Requirements
 		v.Properties["capabilities"] = nodeTemplate.Capabilities
 		v.Properties["interfaces"] = nodeTemplate.Interfaces
 		v.Properties["artifacts"] = nodeTemplate.Artifacts
-	}
-
-	// Relationships
-	for name, nodeTemplate := range s.NodeTemplates {
-		v := nodeTemplates[name]
-
-		for _, relationship := range nodeTemplate.Relationships {
-			nv := nodeTemplates[relationship.TargetNodeTemplate.Name]
-			e := v.NewEdgeTo(nv)
-
-			SetMetadata(e, "relationship")
-			e.Properties["name"] = relationship.Name
-			e.Properties["description"] = relationship.Description
-			e.Properties["types"] = relationship.Types
-			e.Properties["properties"] = relationship.Properties
-			e.Properties["attributes"] = relationship.Attributes
-			e.Properties["interfaces"] = relationship.Interfaces
-		}
 	}
 
 	groups := make(map[string]*clout.Vertex)
 
 	// Groups
 	for _, group := range s.Groups {
-		v := c.NewVertex(clout.NewKey())
+		v := clout_.NewVertex(clout.NewKey())
 
 		groups[group.Name] = v
 
@@ -106,7 +87,7 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 
 	// Workflows
 	for _, workflow := range s.Workflows {
-		v := c.NewVertex(clout.NewKey())
+		v := clout_.NewVertex(clout.NewKey())
 
 		workflows[workflow.Name] = v
 
@@ -122,7 +103,7 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 		steps := make(map[string]*clout.Vertex)
 
 		for _, step := range workflow.Steps {
-			sv := c.NewVertex(clout.NewKey())
+			sv := clout_.NewVertex(clout.NewKey())
 
 			steps[step.Name] = sv
 
@@ -147,7 +128,7 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 
 			// Workflow activities
 			for sequence, activity := range step.Activities {
-				av := c.NewVertex(clout.NewKey())
+				av := clout_.NewVertex(clout.NewKey())
 
 				e = sv.NewEdgeTo(av)
 				SetMetadata(e, "workflowActivity")
@@ -165,7 +146,7 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 				} else if activity.SetNodeState != "" {
 					av.Properties["setNodeState"] = activity.SetNodeState
 				} else if activity.CallOperation != nil {
-					m := make(ard.Map)
+					m := make(ard.StringMap)
 					m["interface"] = activity.CallOperation.Interface.Name
 					m["operation"] = activity.CallOperation.Name
 					av.Properties["callOperation"] = m
@@ -192,7 +173,7 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 
 	// Policies
 	for _, policy := range s.Policies {
-		v := c.NewVertex(clout.NewKey())
+		v := clout_.NewVertex(clout.NewKey())
 
 		SetMetadata(v, "policy")
 		v.Properties["name"] = policy.Name
@@ -216,7 +197,7 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 
 		for _, trigger := range policy.Triggers {
 			if trigger.Operation != nil {
-				to := c.NewVertex(clout.NewKey())
+				to := clout_.NewVertex(clout.NewKey())
 
 				SetMetadata(to, "operation")
 				to.Properties["description"] = trigger.Operation.Description
@@ -237,7 +218,7 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 
 	// Substitution
 	if s.Substitution != nil {
-		v := c.NewVertex(clout.NewKey())
+		v := clout_.NewVertex(clout.NewKey())
 
 		SetMetadata(v, "substitution")
 		v.Properties["type"] = s.Substitution.Type
@@ -276,14 +257,21 @@ func Compile(s *normal.ServiceTemplate) (*clout.Clout, error) {
 		}
 	}
 
+	// Normalize
+	var err error
+	clout_, err = clout_.Normalize()
+	if err != nil {
+		return clout_, err
+	}
+
 	// TODO: call JavaScript plugins
 
-	return c, nil
+	return clout_, nil
 }
 
-func SetMetadata(hasMetadata clout.HasMetadata, kind string) {
-	metadata := make(ard.Map)
-	metadata["version"] = "1.0"
+func SetMetadata(entity clout.Entity, kind string) {
+	metadata := make(ard.StringMap)
+	metadata["version"] = VERSION
 	metadata["kind"] = kind
-	hasMetadata.GetMetadata()["puccini-tosca"] = metadata
+	entity.GetMetadata()["puccini-tosca"] = metadata
 }

@@ -1,9 +1,7 @@
 package normal
 
 import (
-	"fmt"
-
-	"github.com/tliron/puccini/format"
+	"github.com/tliron/puccini/ard"
 )
 
 //
@@ -13,17 +11,19 @@ import (
 type NodeTemplate struct {
 	ServiceTemplate *ServiceTemplate `json:"-" yaml:"-"`
 	Name            string           `json:"-" yaml:"-"`
-	Description     string           `json:"description" yaml:"description"`
-	Types           Types            `json:"types" yaml:"types"`
-	Directives      []string         `json:"directives" yaml:"directives"`
-	Properties      Constrainables   `json:"properties" yaml:"properties"`
-	Attributes      Constrainables   `json:"attributes" yaml:"attributes"`
-	Capabilities    Capabilities     `json:"capabilities" yaml:"capabilities"`
-	Relationships   Relationships    `json:"relationships" yaml:"relationships"`
-	Interfaces      Interfaces       `json:"interfaces" yaml:"interfaces"`
-	Artifacts       Artifacts        `json:"artifacts" yaml:"artifacts"`
-	Policies        []*Policy        `json:"-" yaml:"-"`
-	Groups          []*Group         `json:"-" yaml:"-"`
+
+	Description  string         `json:"description" yaml:"description"`
+	Types        Types          `json:"types" yaml:"types"`
+	Directives   []string       `json:"directives" yaml:"directives"`
+	Properties   Constrainables `json:"properties" yaml:"properties"`
+	Attributes   Constrainables `json:"attributes" yaml:"attributes"`
+	Requirements Requirements   `json:"requirements" yaml:"requirements"`
+	Capabilities Capabilities   `json:"capabilities" yaml:"capabilities"`
+	Interfaces   Interfaces     `json:"interfaces" yaml:"interfaces"`
+	Artifacts    Artifacts      `json:"artifacts" yaml:"artifacts"`
+
+	Policies []*Policy `json:"-" yaml:"-"`
+	Groups   []*Group  `json:"-" yaml:"-"`
 }
 
 func (self *ServiceTemplate) NewNodeTemplate(name string) *NodeTemplate {
@@ -34,8 +34,8 @@ func (self *ServiceTemplate) NewNodeTemplate(name string) *NodeTemplate {
 		Directives:      make([]string, 0),
 		Properties:      make(Constrainables),
 		Attributes:      make(Constrainables),
+		Requirements:    make(Requirements, 0),
 		Capabilities:    make(Capabilities),
-		Relationships:   make(Relationships, 0),
 		Interfaces:      make(Interfaces),
 		Artifacts:       make(Artifacts),
 		Policies:        make([]*Policy, 0),
@@ -43,22 +43,6 @@ func (self *ServiceTemplate) NewNodeTemplate(name string) *NodeTemplate {
 	}
 	self.NodeTemplates[name] = nodeTemplate
 	return nodeTemplate
-}
-
-// Print
-
-func (self *NodeTemplate) Print(indent int) {
-	format.PrintIndent(indent)
-	fmt.Fprintf(format.Stdout, "%s\n", format.ColorTypeName(self.Name))
-
-	length := len(self.Relationships)
-	last := length - 1
-
-	var treePrefix format.TreePrefix
-	for i, relationship := range self.Relationships {
-		isLast := i == last
-		relationship.Print(indent, treePrefix, isLast)
-	}
 }
 
 //
@@ -69,7 +53,8 @@ type NodeTemplates map[string]*NodeTemplate
 
 // For access in JavaScript
 func (self NodeTemplates) Object(name string) map[string]interface{} {
-	o := make(map[string]interface{})
+	// JavaScript requires keys to be strings, so we would lose complex keys
+	o := make(ard.StringMap)
 	for key, nodeTemplate := range self {
 		o[key] = nodeTemplate
 	}

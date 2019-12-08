@@ -13,30 +13,39 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	testParse(t, "grammar/artifacts.yaml", nil)
-	testParse(t, "grammar/attributes.yaml", nil)
-	testParse(t, "grammar/data-types.yaml", nil)
-	testParse(t, "grammar/descriptions.yaml", nil)
-	testParse(t, "grammar/dsl-definitions.yaml", nil)
-	testParse(t, "grammar/functions.yaml", nil)
-	testParse(t, "grammar/inputs-and-outputs.yaml", map[string]interface{}{"ram": "1gib"})
-	testParse(t, "grammar/interfaces.yaml", nil)
-	testParse(t, "grammar/metadata.yaml", nil)
-	testParse(t, "grammar/namespaces.yaml", nil)
-	testParse(t, "grammar/policies-and-groups.yaml", nil)
-	testParse(t, "grammar/requirements-and-capabilities.yaml", nil)
-	testParse(t, "grammar/simple-for-nfv.yaml", nil)
-	testParse(t, "grammar/source-and-target.yaml", nil)
-	testParse(t, "grammar/substitution-mapping-client.yaml", nil)
-	testParse(t, "grammar/substitution-mapping.yaml", nil)
-	testParse(t, "grammar/unicode.yaml", nil)
-	testParse(t, "grammar/workflows.yaml", nil)
-	testParse(t, "javascript/constraints.yaml", nil)
-	testParse(t, "javascript/exec.yaml", nil)
-	testParse(t, "javascript/functions.yaml", nil)
-	testParse(t, "kubernetes/bookinfo/bookinfo-simple.yaml", nil)
-	testParse(t, "openstack/hello-world.yaml", nil)
-	testParse(t, "bpmn/open-loop.yaml", nil)
+	testCompile(t, "tosca/artifacts.yaml", nil)
+	testCompile(t, "tosca/attributes.yaml", nil)
+	testCompile(t, "tosca/data-types.yaml", nil)
+	testCompile(t, "tosca/descriptions.yaml", nil)
+	testCompile(t, "tosca/dsl-definitions.yaml", nil)
+	testCompile(t, "tosca/functions.yaml", nil)
+	testCompile(t, "tosca/inputs-and-outputs.yaml", map[string]interface{}{"ram": "1gib"})
+	testCompile(t, "tosca/interfaces.yaml", nil)
+	testCompile(t, "tosca/metadata.yaml", nil)
+	testCompile(t, "tosca/namespaces.yaml", nil)
+	testCompile(t, "tosca/policies-and-groups.yaml", nil)
+	testCompile(t, "tosca/requirements-and-capabilities.yaml", nil)
+	testCompile(t, "tosca/simple-for-nfv.yaml", nil)
+	testCompile(t, "tosca/source-and-target.yaml", nil)
+	testCompile(t, "tosca/substitution-mapping-client.yaml", nil)
+	testCompile(t, "tosca/substitution-mapping.yaml", nil)
+	testCompile(t, "tosca/unicode.yaml", nil)
+	testCompile(t, "tosca/workflows.yaml", nil)
+	testCompile(t, "javascript/constraints.yaml", nil)
+	testCompile(t, "javascript/exec.yaml", nil)
+	testCompile(t, "javascript/functions.yaml", nil)
+	testCompile(t, "kubernetes/bookinfo/bookinfo-simple.yaml", nil)
+	testCompile(t, "openstack/hello-world.yaml", nil)
+	testCompile(t, "bpmn/open-loop.yaml", nil)
+	testCompile(t, "cloudify/advanced-blueprint-example.yaml", map[string]interface{}{
+		"host_ip":                "1.2.3.4",
+		"agent_user":             "my_user",
+		"agent_private_key_path": "my_key",
+	})
+	testCompile(t, "cloudify/example.yaml", nil)
+	testCompile(t, "hot/hello-world.yaml", map[string]interface{}{
+		"username": "test",
+	})
 }
 
 var ROOT string
@@ -45,10 +54,10 @@ func init() {
 	ROOT = os.Getenv("ROOT")
 }
 
-func testParse(t *testing.T, url string, inputs map[string]interface{}) {
+func testCompile(t *testing.T, url string, inputs map[string]interface{}) {
 	t.Run(url, func(t *testing.T) {
-		// Running the tests in parallel is not for speed -
-		// it actually allowed us to find several concurrency bugs
+		// Running the tests in parallel is not for speed;
+		// it actually allows us to find concurrency bugs
 		t.Parallel()
 
 		var s *normal.ServiceTemplate
@@ -66,9 +75,16 @@ func testParse(t *testing.T, url string, inputs map[string]interface{}) {
 			return
 		}
 
-		compiler.Coerce(c, p)
+		compiler.Resolve(c, p, "yaml", true)
 		if !p.Empty() {
 			t.Errorf("%s", p)
+			return
+		}
+
+		compiler.Coerce(c, p, "yaml", true)
+		if !p.Empty() {
+			t.Errorf("%s", p)
+			return
 		}
 	})
 }

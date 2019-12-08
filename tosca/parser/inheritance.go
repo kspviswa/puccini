@@ -35,7 +35,7 @@ func NewInheritContext() *InheritContext {
 func (self *InheritContext) GetInheritTask(entityPtr interface{}) *Task {
 	task, ok := self.TasksForEntities[entityPtr]
 	if !ok {
-		task = NewTask(tosca.GetContext(entityPtr).Path)
+		task = NewTask(tosca.GetContext(entityPtr).Path.String())
 		self.Tasks.Add(task)
 		self.TasksForEntities[entityPtr] = task
 
@@ -80,6 +80,8 @@ func (self *InheritContext) GetDependencies(entityPtr interface{}) map[interface
 	// From field values
 	entity := reflect.ValueOf(entityPtr).Elem()
 	for _, structField := range reflection.GetStructFields(entity.Type()) {
+		// Does this case ever happen?
+		// Would conflict with anonymous pointer fields (Go "inheritance")
 		//		if reflection.IsPtrToStruct(structField.Type) {
 		//			// Compatible with *interface{}
 		//			field := entity.FieldByName(structField.Name)
@@ -126,9 +128,11 @@ type InheritField struct {
 }
 
 func (self *InheritField) Inherit() {
-	// TODO do we really need all of these? some of them aren't used in TOSCA 1.1
+	// TODO do we really need all of these? some of them aren't used in TOSCA
 	fieldEntityPtr := self.Field.Interface()
 	if reflection.IsPtrToString(fieldEntityPtr) {
+		self.InheritEntity()
+	} else if reflection.IsPtrToInt64(fieldEntityPtr) {
 		self.InheritEntity()
 	} else if reflection.IsPtrToBool(fieldEntityPtr) {
 		self.InheritEntity()

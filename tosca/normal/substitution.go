@@ -9,7 +9,8 @@ import (
 //
 
 type Substitution struct {
-	ServiceTemplate     *ServiceTemplate
+	ServiceTemplate *ServiceTemplate
+
 	Type                string
 	TypeMetadata        map[string]string
 	CapabilityMappings  map[*NodeTemplate]*Capability
@@ -29,6 +30,15 @@ func (self *ServiceTemplate) NewSubstitution() *Substitution {
 	}
 	self.Substitution = substitutionMappings
 	return substitutionMappings
+}
+
+type MarshalableSubstitution struct {
+	Type                string            `json:"type" yaml:"type"`
+	TypeMetadata        map[string]string `json:"typeMetadata" yaml:"typeMetadata"`
+	CapabilityMappings  map[string]string `json:"capabilityMappings" yaml:"capabilityMappings"`
+	RequirementMappings map[string]string `json:"requirementMappings" yaml:"requirementMappings"`
+	PropertyMappings    map[string]string `json:"propertyMappings" yaml:"propertyMappings"`
+	InterfaceMappings   map[string]string `json:"interfaceMappings" yaml:"interfaceMappings"`
 }
 
 func (self *Substitution) Marshalable() interface{} {
@@ -52,14 +62,7 @@ func (self *Substitution) Marshalable() interface{} {
 		interfaceMappings[n.Name] = i
 	}
 
-	return &struct {
-		Type                string            `json:"type" yaml:"type"`
-		TypeMetadata        map[string]string `json:"typeMetadata" yaml:"typeMetadata"`
-		CapabilityMappings  map[string]string `json:"capabilityMappings" yaml:"capabilityMappings"`
-		RequirementMappings map[string]string `json:"requirementMappings" yaml:"requirementMappings"`
-		PropertyMappings    map[string]string `json:"propertyMappings" yaml:"propertyMappings"`
-		InterfaceMappings   map[string]string `json:"interfaceMappings" yaml:"interfaceMappings"`
-	}{
+	return &MarshalableSubstitution{
 		Type:                self.Type,
 		TypeMetadata:        self.TypeMetadata,
 		CapabilityMappings:  capabilityMappings,

@@ -14,50 +14,52 @@ func init() {
 }
 
 var execCmd = &cobra.Command{
-	Use:   "exec [COMMAND or JavaScript PATH or URL] [[Clout PATH or URL]]",
-	Short: "Execute JavaScript in Clout",
+	Use:   "exec [NAME or JavaScript PATH or URL] [[Clout PATH or URL]]",
+	Short: "Execute JavaScript scriptlet in Clout",
 	Long:  ``,
 	Args:  cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		name := args[0]
+		scriptletName := args[0]
 
 		var path string
 		if len(args) == 2 {
 			path = args[1]
 		}
 
-		c, err := ReadClout(path)
-		common.ValidateError(err)
+		clout_, err := ReadClout(path)
+		common.FailOnError(err)
 
 		// Try loading JavaScript from Clout
-		sourceCode, err := js.GetScriptSourceCode(name, c)
+		scriptlet, err := js.GetScriptlet(scriptletName, clout_)
 
 		if err != nil {
 			// Try loading JavaScript from path or URL
-			url_, err := url.NewValidURL(name, nil)
-			common.ValidateError(err)
+			url_, err := url.NewValidURL(scriptletName, nil)
+			common.FailOnError(err)
 
-			sourceCode, err = url.Read(url_)
-			common.ValidateError(err)
+			scriptlet, err = url.Read(url_)
+			common.FailOnError(err)
 
-			err = js.SetScriptSourceCode(name, js.Cleanup(sourceCode), c)
-			common.ValidateError(err)
+			err = js.SetScriptlet(scriptletName, js.CleanupScriptlet(scriptlet), clout_)
+			common.FailOnError(err)
 		}
 
-		err = Exec(name, sourceCode, c)
-		common.ValidateError(err)
+		err = Exec(scriptletName, scriptlet, clout_)
+		common.FailOnError(err)
 	},
 }
 
-func Exec(name string, sourceCode string, c *clout.Clout) error {
-	program, err := js.GetProgram(name, sourceCode)
+func Exec(scriptletName string, scriptlet string, clout_ *clout.Clout) error {
+	jsContext := js.NewContext(scriptletName, log, common.Quiet, ardFormat, pretty, output)
+
+	program, err := jsContext.GetProgram(scriptletName, scriptlet)
 	if err != nil {
 		return err
 	}
 
-	context := js.NewContext(name, log, common.Quiet, ardFormat, output)
-	_, runtime := context.NewCloutContext(c)
+	runtime := jsContext.NewCloutRuntime(clout_, nil)
+
 	_, err = runtime.RunProgram(program)
 
-	return js.UnwrapError(err)
+	return js.UnwrapException(err)
 }

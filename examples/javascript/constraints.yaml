@@ -1,7 +1,7 @@
-tosca_definitions_version: tosca_simple_yaml_1_1
+tosca_definitions_version: tosca_simple_yaml_1_3
 
 # To apply the constraints run:
-#   puccini-tosca parse --coerce constraints.yaml
+#   puccini-tosca compile --coerce constraints.yaml
 
 # Also see: functions.yaml
 
@@ -10,7 +10,7 @@ metadata:
   # Your code must provide a global function named "validate"
   # The first argument is always the value to validate
   # It must return "true" if valid
-  puccini-js.source.multiple_of: |-
+  puccini-js.embed.multiple_of: |-
     function validate(value, multiple) {
       if (arguments.length !== 2)
         throw 'must have 1 argument';

@@ -7,9 +7,12 @@ import (
 
 	"github.com/tliron/puccini/ard"
 	"github.com/tliron/puccini/tosca/reflection"
+	"github.com/tliron/yamlkeys"
 )
 
 type Reader func(*Context) interface{}
+
+type Grammar map[string]Reader
 
 const (
 	ReadFieldModeDefault       = 0
@@ -19,21 +22,28 @@ const (
 )
 
 // From "read" tags
-func (self *Context) ReadFields(entityPtr interface{}, readers map[string]Reader) []string {
+func (self *Context) ReadFields(entityPtr interface{}) []string {
 	if !self.ValidateType("map") {
 		return nil
 	}
 
 	var keys []string
 
-	data := self.Data.(ard.Map)
 	entity := reflect.ValueOf(entityPtr).Elem()
 	tags := reflection.GetFieldTagsForValue(entity, "read")
 
 	// Read tag overrides
 	if self.ReadOverrides != nil {
 		for fieldName, tag := range self.ReadOverrides {
-			tags[fieldName] = tag
+			if tag != "" {
+				tags[fieldName] = tag
+			} else {
+				// Empty tag means delete
+				if _, ok := tags[fieldName]; !ok {
+					panic(fmt.Sprintf("unknown read field: \"%s\"", fieldName))
+				}
+				delete(tags, fieldName)
+			}
 		}
 	}
 
@@ -46,7 +56,7 @@ func (self *Context) ReadFields(entityPtr interface{}, readers map[string]Reader
 	// Parse tags
 	var readFields []*ReadField
 	for fieldName, tag := range tags {
-		readField := NewReadField(fieldName, tag, readers)
+		readField := NewReadField(fieldName, tag, self, entity)
 		if readField.Important {
 			// Important fields come first
 			readFields = append([]*ReadField{readField}, readFields...)
@@ -58,7 +68,7 @@ func (self *Context) ReadFields(entityPtr interface{}, readers map[string]Reader
 	for _, readField := range readFields {
 		if readField.Wildcard {
 			// Iterate all keys that aren't tagged
-			for key := range data {
+			for key := range self.Data.(ard.Map) {
 				tagged := false
 				for _, k := range keys {
 					if key == k {
@@ -67,12 +77,12 @@ func (self *Context) ReadFields(entityPtr interface{}, readers map[string]Reader
 					}
 				}
 				if !tagged {
-					readField.Key = key
-					readField.Read(entity, data, self)
+					readField.Key = yamlkeys.KeyString(key)
+					readField.Read()
 				}
 			}
 		} else {
-			readField.Read(entity, data, self)
+			readField.Read()
 		}
 	}
 
@@ -99,18 +109,24 @@ func (self *Context) setMapItem(field reflect.Value, item interface{}) {
 type ReadField struct {
 	FieldName string
 	Key       string
+	Context   *Context
+	Entity    reflect.Value
 	Reader    Reader
 	Mode      int
 	Important bool
 	Wildcard  bool
 }
 
-func NewReadField(fieldName string, tag string, readers map[string]Reader) *ReadField {
+func NewReadField(fieldName string, tag string, context *Context, entity reflect.Value) *ReadField {
+	// TODO: is it worth caching some of this?
+
 	t := strings.Split(tag, ",")
 
 	var self = ReadField{
 		FieldName: fieldName,
 		Key:       t[0],
+		Context:   context,
+		Entity:    entity,
 	}
 
 	if self.Key == "?" {
@@ -141,7 +157,7 @@ func NewReadField(fieldName string, tag string, readers map[string]Reader) *Read
 		}
 
 		var ok bool
-		self.Reader, ok = readers[readerName]
+		self.Reader, ok = context.Grammar[readerName]
 		if !ok {
 			panic(fmt.Sprintf("reader not found: %s", readerName))
 		}
@@ -150,14 +166,13 @@ func NewReadField(fieldName string, tag string, readers map[string]Reader) *Read
 	return &self
 }
 
-func (self *ReadField) Read(entity reflect.Value, data ard.Map, context *Context) {
-	childData, ok := data[self.Key]
+func (self *ReadField) Read() {
+	childData, ok := self.Context.Data.(ard.Map)[self.Key]
 	if !ok {
 		return
 	}
 
-	context = context.FieldChild(self.Key, childData)
-	field := entity.FieldByName(self.FieldName)
+	field := self.Entity.FieldByName(self.FieldName)
 
 	if self.Reader != nil {
 		fieldType := field.Type()
@@ -166,18 +181,18 @@ func (self *ReadField) Read(entity reflect.Value, data ard.Map, context *Context
 			slice := field
 			switch self.Mode {
 			case ReadFieldModeList:
-				context.ReadListItems(self.Reader, func(item interface{}) {
+				self.Context.FieldChild(self.Key, childData).ReadListItems(self.Reader, func(item interface{}) {
 					slice = reflect.Append(slice, reflect.ValueOf(item))
 				})
 			case ReadFieldModeSequencedList:
-				context.ReadSequencedListItems(self.Reader, func(item interface{}) {
+				self.Context.FieldChild(self.Key, childData).ReadSequencedListItems(self.Reader, func(item interface{}) {
 					slice = reflect.Append(slice, reflect.ValueOf(item))
 				})
 			case ReadFieldModeItem:
 				length := slice.Len()
-				slice = reflect.Append(slice, reflect.ValueOf(self.Reader(context.ListChild(length, childData))))
+				slice = reflect.Append(slice, reflect.ValueOf(self.Reader(self.Context.ListChild(length, childData))))
 			default:
-				context.ReadMapItems(self.Reader, func(item interface{}) {
+				self.Context.FieldChild(self.Key, childData).ReadMapItems(self.Reader, func(item interface{}) {
 					slice = reflect.Append(slice, reflect.ValueOf(item))
 				})
 			}
@@ -191,23 +206,27 @@ func (self *ReadField) Read(entity reflect.Value, data ard.Map, context *Context
 			// Field is compatible with map[string]*interface{}
 			switch self.Mode {
 			case ReadFieldModeList:
+				context := self.Context.FieldChild(self.Key, childData)
 				context.ReadListItems(self.Reader, func(item interface{}) {
 					context.setMapItem(field, item)
 				})
 			case ReadFieldModeSequencedList:
+				context := self.Context.FieldChild(self.Key, childData)
 				context.ReadSequencedListItems(self.Reader, func(item interface{}) {
 					context.setMapItem(field, item)
 				})
 			case ReadFieldModeItem:
-				context.setMapItem(field, self.Reader(context.MapChild(self.Key, childData)))
+				context := self.Context.FieldChild(self.Key, childData)
+				context.setMapItem(field, self.Reader(context))
 			default:
+				context := self.Context.FieldChild(self.Key, childData)
 				context.ReadMapItems(self.Reader, func(item interface{}) {
 					context.setMapItem(field, item)
 				})
 			}
 		} else {
 			// Field is compatible with *interface{}
-			item := self.Reader(context)
+			item := self.Reader(self.Context.FieldChild(self.Key, childData))
 			if item != nil {
 				field.Set(reflect.ValueOf(item))
 			}
@@ -216,30 +235,42 @@ func (self *ReadField) Read(entity reflect.Value, data ard.Map, context *Context
 		fieldEntityPtr := field.Interface()
 		if reflection.IsPtrToString(fieldEntityPtr) {
 			// Field is *string
-			item := context.ReadString()
+			item := self.Context.FieldChild(self.Key, childData).ReadString()
+			if item != nil {
+				field.Set(reflect.ValueOf(item))
+			}
+		} else if reflection.IsPtrToInt64(fieldEntityPtr) {
+			// Field is *int64
+			item := self.Context.FieldChild(self.Key, childData).ReadInteger()
+			if item != nil {
+				field.Set(reflect.ValueOf(item))
+			}
+		} else if reflection.IsPtrToFloat64(fieldEntityPtr) {
+			// Field is *float64
+			item := self.Context.FieldChild(self.Key, childData).ReadFloat()
 			if item != nil {
 				field.Set(reflect.ValueOf(item))
 			}
 		} else if reflection.IsPtrToBool(fieldEntityPtr) {
 			// Field is *bool
-			item := context.ReadBoolean()
+			item := self.Context.FieldChild(self.Key, childData).ReadBoolean()
 			if item != nil {
 				field.Set(reflect.ValueOf(item))
 			}
 		} else if reflection.IsPtrToSliceOfString(fieldEntityPtr) {
 			// Field is *[]string
-			item := context.ReadStringList()
+			item := self.Context.FieldChild(self.Key, childData).ReadStringList()
 			if item != nil {
 				field.Set(reflect.ValueOf(item))
 			}
 		} else if reflection.IsPtrToMapOfStringToString(fieldEntityPtr) {
 			// Field is *map[string]string
-			item := context.ReadStringMap()
+			item := self.Context.FieldChild(self.Key, childData).ReadStringStringMap()
 			if item != nil {
 				field.Set(reflect.ValueOf(item))
 			}
 		} else {
-			panic(fmt.Sprintf("\"read\" tag's field type \"%T\" is not supported in struct: %T.%s", fieldEntityPtr, entity.Interface(), self.FieldName))
+			panic(fmt.Sprintf("\"read\" tag's field type \"%T\" is not supported in struct: %T.%s", fieldEntityPtr, self.Entity.Interface(), self.FieldName))
 		}
 	}
 }
@@ -272,6 +303,15 @@ func (self *Context) ReadStringList() *[]string {
 	return nil
 }
 
+func (self *Context) ReadStringOrStringList() *[]string {
+	if self.Is("list") {
+		return self.ReadStringList()
+	} else if self.ValidateType("list", "string") {
+		return &[]string{*self.ReadString()}
+	}
+	return nil
+}
+
 func (self *Context) ReadStringListFixed(length int) *[]string {
 	strings := self.ReadStringList()
 	if (strings != nil) && (len(*strings) != length) {
@@ -281,16 +321,27 @@ func (self *Context) ReadStringListFixed(length int) *[]string {
 	return strings
 }
 
-func (self *Context) ReadStringMap() *map[string]string {
+func (self *Context) ReadStringMap() *map[string]interface{} {
+	if self.ValidateType("map") {
+		strings := make(map[string]interface{})
+		for key, data := range self.Data.(ard.Map) {
+			strings[yamlkeys.KeyString(key)] = data
+		}
+		return &strings
+	}
+	return nil
+}
+
+func (self *Context) ReadStringStringMap() *map[string]string {
 	if self.ValidateType("map") {
 		strings := make(map[string]string)
 		for key, data := range self.Data.(ard.Map) {
-			string, ok := data.(string)
-			if !ok {
+			if string, ok := data.(string); ok {
+				strings[yamlkeys.KeyString(key)] = string
+			} else {
 				self.MapChild(key, data).ReportValueWrongType("string")
 				continue
 			}
-			strings[key] = string
 		}
 		return &strings
 	}
@@ -370,7 +421,7 @@ func (self *Context) ReadSequencedListItems(read Reader, process Processor) bool
 				return false
 			}
 			for itemName, data := range item {
-				process(read(self.SequencedListChild(index, itemName, data)))
+				process(read(self.SequencedListChild(index, yamlkeys.KeyString(itemName), data)))
 			}
 		}
 		return true

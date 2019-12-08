@@ -9,69 +9,32 @@ import (
 //
 
 type Constrainable interface {
-	AddConstraint(*tosca.Function)
+	SetKey(Constrainable)
 	SetDescription(string)
+	AddConstraint(*tosca.FunctionCall)
 }
 
 //
 // Constrainables
 //
 
-type Constrainables map[string]Constrainable
+type Constrainables map[interface{}]Constrainable
 
 //
 // ConstrainableList
 //
 
-type ConstrainableList struct {
-	List        []Constrainable `json:"list" yaml:"list"`
-	Constraints Functions       `json:"constraints" yaml:"constraints"`
-	Description string          `json:"description" yaml:"description"`
-}
+type ConstrainableList []Constrainable
 
-func NewConstrainableList(length int) *ConstrainableList {
-	return &ConstrainableList{List: make([]Constrainable, length)}
-}
+func (self ConstrainableList) AppendWithKey(key interface{}, value Constrainable) ConstrainableList {
+	var constrainableKey Constrainable
 
-// Constrainable interface
-func (self *ConstrainableList) AddConstraint(constraint *tosca.Function) {
-	self.Constraints = append(self.Constraints, NewFunction(constraint))
-}
-
-// Constrainable interface
-func (self *ConstrainableList) SetDescription(description string) {
-	self.Description = description
-}
-
-//
-// ConstrainableMap
-//
-
-type ConstrainableMap struct {
-	Map         Constrainables `json:"map" yaml:"map"`
-	Constraints Functions      `json:"constraints" yaml:"constraints"`
-	Description string         `json:"description" yaml:"description"`
-}
-
-func NewConstrainableMap() *ConstrainableMap {
-	return &ConstrainableMap{Map: make(Constrainables)}
-}
-
-// Constrainable interface
-func (self *ConstrainableMap) AddConstraint(constraint *tosca.Function) {
-	self.Constraints = append(self.Constraints, NewFunction(constraint))
-}
-
-// Constrainable interface
-func (self *ConstrainableMap) SetDescription(description string) {
-	self.Description = description
-}
-
-// For access in JavaScript
-func (self ConstrainableMap) Object(name string) map[string]interface{} {
-	o := make(map[string]interface{})
-	for key, coercible := range self.Map {
-		o[key] = coercible
+	var ok bool
+	if constrainableKey, ok = key.(Constrainable); !ok {
+		constrainableKey = NewValue(key)
 	}
-	return o
+
+	value.SetKey(constrainableKey)
+
+	return append(self, value)
 }

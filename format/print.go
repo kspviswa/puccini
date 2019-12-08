@@ -41,7 +41,11 @@ func Print(data interface{}, format string, pretty bool) error {
 }
 
 func PrintYaml(data interface{}, pretty bool) error {
-	return WriteYaml(data, Stdout)
+	indent := "          "
+	if pretty {
+		indent = Indent
+	}
+	return WriteYaml(data, Stdout, indent)
 }
 
 func PrintJson(data interface{}, pretty bool) error {
@@ -62,8 +66,7 @@ func PrintXml(data interface{}, pretty bool) error {
 	if pretty {
 		indent = Indent
 	}
-	err := WriteXml(data, Stdout, indent)
-	if err != nil {
+	if err := WriteXml(data, Stdout, indent); err != nil {
 		return err
 	}
 	if pretty {

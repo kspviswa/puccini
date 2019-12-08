@@ -2,22 +2,18 @@
 set -e
 
 HERE=$(dirname "$(readlink -f "$0")")
-ROOT=$(realpath "$HERE/..")
-
 . "$HERE/env.sh"
-
-PATH="$ROOT:$GOPATH/bin:$PATH"
 
 "$HERE/build.sh"
 
-CSAR="$ROOT/examples/csar/bookinfo.csar"
+mkdir --parents "$ROOT/dist"
 
-mkdir --parents "$(dirname "$CSAR")"
+CSAR=$ROOT/dist/bookinfo.csar
 
 cd "$ROOT/examples/kubernetes/bookinfo"
 
 ENTRY_DEFINITIONS=bookinfo-simple.yaml \
-puccini-csar "$CSAR" .
+"$ROOT/puccini-csar" "$CSAR" .
 
 puccini-tosca compile "$CSAR" "$@" | \
 puccini-js exec kubernetes.generate "$@"

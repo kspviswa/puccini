@@ -7,7 +7,8 @@ import (
 	"io"
 
 	"github.com/tliron/puccini/ard"
-	"gopkg.in/yaml.v2"
+	"github.com/tliron/yamlkeys"
+	"gopkg.in/yaml.v3"
 )
 
 func Read(reader io.Reader, format string) (interface{}, error) {
@@ -24,33 +25,37 @@ func Read(reader io.Reader, format string) (interface{}, error) {
 }
 
 func ReadYaml(reader io.Reader) (interface{}, error) {
-	var data interface{}
+	var node yaml.Node
 	decoder := yaml.NewDecoder(reader)
-	decoder.SetStrict(true)
-	err := decoder.Decode(&data)
-	if err != nil {
+	if err := decoder.Decode(&node); err == nil {
+		if data, err := yamlkeys.DecodeNode(&node); err == nil {
+			return data, nil
+		} else {
+			return nil, err
+		}
+	} else {
 		return nil, err
 	}
-	data, _ = ard.EnsureValue(data)
-	return data, nil
 }
 
 func ReadJson(reader io.Reader) (interface{}, error) {
 	var data interface{}
 	decoder := json.NewDecoder(reader)
-	err := decoder.Decode(&data)
-	if err != nil {
+	if err := decoder.Decode(&data); err == nil {
+		data, _ = ard.ToMaps(data)
+		return data, nil
+	} else {
 		return nil, err
 	}
-	return data, err
 }
 
 func ReadXml(reader io.Reader) (interface{}, error) {
 	var data interface{}
 	decoder := xml.NewDecoder(reader)
-	err := decoder.Decode(&data)
-	if err != nil {
+	if err := decoder.Decode(&data); err == nil {
+		data, _ = ard.ToMaps(data)
+		return data, nil
+	} else {
 		return nil, err
 	}
-	return data, err
 }

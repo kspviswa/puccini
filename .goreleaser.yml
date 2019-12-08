@@ -1,23 +1,29 @@
 
 builds:
 
-- main: ./puccini-tosca
+- id: puccini-tosca
+  main: ./puccini-tosca
   binary: puccini-tosca
   goarch:
   - amd64
+  - wasm
   goos:
   - linux
   - darwin
   - windows
+  - js
 
-- main: ./puccini-js
+- id: puccini-js
+  main: ./puccini-js
   binary: puccini-js
   goarch:
   - amd64
+  - wasm
   goos:
   - linux
   - darwin
   - windows
+  - js
 
 nfpm:
 
@@ -52,6 +58,7 @@ checksum:
 release:
 
   #disable: true
+  #prerelease: true
 
   github:
     owner: tliron

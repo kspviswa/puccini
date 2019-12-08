@@ -9,7 +9,8 @@ import (
 //
 
 type Type struct {
-	Name     string            `json:"-" yaml:"-"`
+	Name string `json:"-" yaml:"-"`
+
 	Metadata map[string]string `json:"metadata" yaml:"metadata"`
 }
 
@@ -25,6 +26,14 @@ func NewType(name string) *Type {
 //
 
 type Types map[string]*Type
+
+func NewTypes(names ...string) Types {
+	types := make(Types)
+	for _, name := range names {
+		types[name] = NewType(name)
+	}
+	return types
+}
 
 func GetHierarchyTypes(hierarchy *tosca.Hierarchy) Types {
 	types := make(Types)

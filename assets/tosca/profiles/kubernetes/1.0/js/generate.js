@@ -3,18 +3,18 @@ clout.exec('tosca.utils');
 
 tosca.coerce();
 
-specs = [];
+var specs = [];
 
-for (v in clout.vertexes) {
-	vertex = clout.vertexes[v];
+for (var vertexId in clout.vertexes) {
+	var vertex = clout.vertexes[vertexId];
 	if (!tosca.isNodeTemplate(vertex))
 		continue;
-	nodeTemplate = vertex.properties;
+	var nodeTemplate = vertex.properties;
 
 	// Find metadata
-	metadata = {};
-	for (c in nodeTemplate.capabilities) {
-		capability = nodeTemplate.capabilities[c];
+	var metadata = {};
+	for (var capabilityName in nodeTemplate.capabilities) {
+		var capability = nodeTemplate.capabilities[capabilityName];
 		if ('kubernetes.Metadata' in capability.types) {
 			metadata = capability.properties;
 			break;
@@ -22,71 +22,68 @@ for (v in clout.vertexes) {
 	}
 
 	// At least have the "service" label
-	if (metadata.labels === undefined) {
+	if (metadata.labels === undefined)
 		metadata.labels = {};
-	}
 	metadata.labels.service = nodeTemplate.name;
 
 	// Generate specs
-	for (c in nodeTemplate.capabilities) {
-		capability = nodeTemplate.capabilities[c];
-		if ('kubernetes.Service' in capability.types) {
+	for (var capabilityName in nodeTemplate.capabilities) {
+		var capability = nodeTemplate.capabilities[capabilityName];
+		if ('kubernetes.Service' in capability.types)
 			generateService(capability, metadata);
-		} else if ('kubernetes.Deployment' in capability.types) {
+		else if ('kubernetes.Deployment' in capability.types)
 			generateDeployment(capability, metadata);
-		}
 	}
 
 	// Run plugins
-	plugins = clout.getPlugins('kubernetes.plugins');
-	for (p in plugins) {
-		plugin = plugins[p];
-		log.debugf('calling plugin: %s', plugin.name);
-		if (plugin.process)
-			entries = plugin.process(clout, vertex, entries);
-	}
+//	plugins = clout.getPlugins('kubernetes.plugins');
+//	for (var p in plugins) {
+//		plugin = plugins[p];
+//		log.debugf('calling plugin: %s', plugin.name);
+//		if (plugin.process)
+//			entries = plugin.process(clout, vertex, entries);
+//	}
 }
 
 puccini.write(specs);
 
 function generateService(capability, metadata) {
-	spec = {
+	var spec = {
 		apiVersion: 'v1',
 		kind: 'Service',
 		metadata: metadata,
 		spec: {}
 	};
 
-	for (k in capability.properties) {
-		v = capability.properties[k];
-		spec.spec[k] = v;
+	for (var propertyName in capability.properties) {
+		var v = capability.properties[propertyName];
+		spec.spec[propertyName] = v;
 	}
 
 	// Default selector
-	if (spec.spec.selector === undefined) {
+	if (spec.spec.selector === undefined)
 		spec.spec.selector = metadata.labels;
-	}
 
 	specs.push(spec);
 }
 
 function generateDeployment(capability, labels) {
-	spec = {
+	var spec = {
 		apiVersion: 'apps/v1',
 		kind: 'Deployment',
 		metadata: metadata,
 		spec: {}
 	};
 
-	for (p in capability.properties) {
-		v = capability.properties[p];
-		switch (p) {
+	for (var propertyName in capability.properties) {
+		var v = capability.properties[propertyName];
+		switch (propertyName) {
 		case 'minReadySeconds':
 		case 'progressDeadlineSeconds':
 			v = convertScalarUnit(v);
 			break;
 		case 'strategy':
-			s = {
+			var s = {
 				type: v.type
 			};
 			if (v.type === 'RollingUpdate') {
@@ -98,9 +95,9 @@ function generateDeployment(capability, labels) {
 			v = s;
 			break;
 		case 'template':
-			s = {};
-			for (t in v) {
-				vv = v[t];
+			var s = {};
+			for (var t in v) {
+				var vv = v[t];
 				switch (t) {
 				case 'activeDeadlineSeconds':
 				case 'terminationGracePeriodSeconds':
@@ -114,13 +111,12 @@ function generateDeployment(capability, labels) {
 				spec: s
 			};
 		}
-		spec.spec[p] = v;
+		spec.spec[propertyName] = v;
 	}
 
 	// Default selector
-	if ((spec.spec.selector.matchExpressions == undefined) && (spec.spec.selector.matchLabels === undefined)) {
+	if ((spec.spec.selector.matchExpressions == undefined) && (spec.spec.selector.matchLabels === undefined))
 		spec.spec.selector.matchLabels = metadata.labels;
-	}
 
 	specs.push(spec);
 }

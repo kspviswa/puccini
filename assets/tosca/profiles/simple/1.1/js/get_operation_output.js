@@ -1,4 +1,0 @@
-
-function evaluate() {
-	return 'TODO';
-}

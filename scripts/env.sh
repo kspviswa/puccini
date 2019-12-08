@@ -2,11 +2,15 @@
 set -e
 
 HERE=$(dirname "$(readlink -f "$0")")
+ROOT=$(readlink -f "$HERE/..")
 
 if [ -z "$GOPATH" ]; then
-	GOPATH="$HOME/go"
+	GOPATH=$HOME/go
 fi
 
-PROJECT="$GOPATH/src/github.com/tliron/puccini"
+PATH=$GOPATH/bin:$ROOT:$PATH
 
-PATH="$PATH:$GOPATH/bin"
+function git_version () {
+	VERSION=$(git -C "$ROOT" describe)
+	REVISION=$(git -C "$ROOT" rev-parse HEAD)
+}

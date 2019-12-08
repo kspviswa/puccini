@@ -6,24 +6,22 @@ import (
 	"github.com/tliron/puccini/ard"
 )
 
-type Constraints []*Function
+//
+// Constraints
+//
 
-func (self *CloutContext) NewConstraints(map_ ard.Map) (Constraints, error) {
-	v, ok := map_["constraints"]
-	if !ok {
-		return nil, nil
-	}
+type Constraints []*FunctionCall
 
-	list, ok := v.(ard.List)
-	if !ok {
-		return nil, fmt.Errorf("malformed \"constraints\"")
-	}
-
+func (self *CloutContext) NewConstraints(list ard.List, functionCallContext FunctionCallContext) (Constraints, error) {
 	constraints := make(Constraints, len(list))
+
 	for index, element := range list {
-		var err error
-		constraints[index], err = self.NewFunction(element, nil, nil, nil)
-		if err != nil {
+		if coercible, err := self.NewCoercible(element, functionCallContext); err == nil {
+			var ok bool
+			if constraints[index], ok = coercible.(*FunctionCall); !ok {
+				return nil, fmt.Errorf("malformed constraint, not a function call: %v", element)
+			}
+		} else {
 			return nil, err
 		}
 	}
@@ -31,19 +29,49 @@ func (self *CloutContext) NewConstraints(map_ ard.Map) (Constraints, error) {
 	return constraints, nil
 }
 
-func (self Constraints) Apply(value interface{}) (interface{}, error) {
-	// Coerce value
+func (self *CloutContext) NewConstraintsFromNotation(notation ard.StringMap, name string, functionCallContext FunctionCallContext) (Constraints, error) {
+	if data, ok := notation[name]; ok {
+		if list, ok := data.(ard.List); ok {
+			return self.NewConstraints(list, functionCallContext)
+		} else {
+			return nil, fmt.Errorf("malformed \"%s\", not a list: %T", name, data)
+		}
+	} else {
+		return nil, nil
+	}
+}
+
+func (self Constraints) Validate(value interface{}) (bool, error) {
 	if coercible, ok := value.(Coercible); ok {
 		var err error
-		value, err = coercible.Coerce()
-		if err != nil {
+		if value, err = coercible.Coerce(); err != nil {
 			return false, err
 		}
 	}
 
 	for _, constraint := range self {
-		_, err := constraint.Validate(value)
-		if err != nil {
+		if valid, err := constraint.Validate(value, false); err == nil {
+			if !valid {
+				return false, nil
+			}
+		} else {
+			return false, err
+		}
+	}
+
+	return true, nil
+}
+
+func (self Constraints) Apply(value interface{}) (interface{}, error) {
+	if coercible, ok := value.(Coercible); ok {
+		var err error
+		if value, err = coercible.Coerce(); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, constraint := range self {
+		if _, err := constraint.Validate(value, true); err != nil {
 			return nil, err
 		}
 	}

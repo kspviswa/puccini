@@ -21,6 +21,7 @@ type PucciniApi struct {
 	Stderr *os.File
 	Stdin  *os.File
 	Format string
+	Pretty bool
 
 	context *Context
 }
@@ -36,15 +37,16 @@ func (self *Context) NewPucciniApi() *PucciniApi {
 		Stderr:  self.Stderr,
 		Stdin:   self.Stdin,
 		Format:  format,
+		Pretty:  self.Pretty,
 		context: self,
 	}
 }
 
-func (self *PucciniApi) Sprintf(f string, a ...interface{}) string {
+func (entry *PucciniApi) Sprintf(f string, a ...interface{}) string {
 	return fmt.Sprintf(f, a...)
 }
 
-func (self *PucciniApi) Timestamp() (string, error) {
+func (self *PucciniApi) Timestamp() string {
 	return common.Timestamp()
 }
 
@@ -58,7 +60,7 @@ func (self *PucciniApi) Write(data interface{}, path string, dontOverwrite bool)
 		output = filepath.Join(output, path)
 		var err error
 		output, err = filepath.Abs(output)
-		self.context.ValidateError(err)
+		self.context.FailOnError(err)
 	}
 
 	if output == "" {
@@ -87,6 +89,6 @@ func (self *PucciniApi) Write(data interface{}, path string, dontOverwrite bool)
 		}
 	}
 
-	err := format.WriteOrPrint(data, self.context.ArdFormat, true, output)
-	self.context.ValidateError(err)
+	err := format.WriteOrPrint(data, self.Format, self.Pretty, output)
+	self.context.FailOnError(err)
 }

@@ -9,64 +9,80 @@ import (
 //
 
 type Value struct {
-	Context     *CloutContext `json:"-" yaml:"-"`
-	Value       interface{}   `json:"value" yaml:"value"`
-	Constraints Constraints   `json:"constraints" yaml:"constraints"`
+	Notation ard.StringMap `json:"-" yaml:"-"`
+
+	Data        interface{} `json:"data" yaml:"data"`
+	Constraints Constraints `json:"constraints" yaml:"constraints"`
 }
 
-func (self *CloutContext) NewValue(data interface{}, site interface{}, source interface{}, target interface{}) (*Value, error) {
-	c := Value{
-		Context: self,
-		Value:   data,
+func (self *CloutContext) NewValue(data interface{}, notation ard.StringMap, functionCallContext FunctionCallContext) (*Value, error) {
+	value := Value{
+		Data:     data,
+		Notation: notation,
 	}
 
 	var err error
-	if map_, ok := data.(ard.Map); ok {
-		if v, ok := map_["value"]; ok {
-			c.Value = v
-		} else if v, ok := map_["list"]; ok {
-			if l, ok := v.(ard.List); ok {
-				c.Value, err = self.NewCoercibleList(l, site, source, target)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				return &c, nil
-			}
-		} else if v, ok := map_["map"]; ok {
-			if m, ok := v.(ard.Map); ok {
-				c.Value, err = self.NewCoercibleMap(m, site, source, target)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				return &c, nil
-			}
-		} else {
-			return &c, nil
-		}
-
-		c.Constraints, err = self.NewConstraints(map_)
-		if err != nil {
-			return nil, err
-		}
+	if value.Constraints, err = self.NewConstraintsFromNotation(notation, "constraints", functionCallContext); err != nil {
+		return nil, err
 	}
 
-	return &c, nil
+	return &value, nil
+}
+
+func (self *CloutContext) NewValueForList(list ard.List, notation ard.StringMap, functionCallContext FunctionCallContext) (*Value, error) {
+	if entryConstraints, err := self.NewConstraintsFromNotation(notation, "entryConstraints", functionCallContext); err == nil {
+		if list_, err := self.NewList(list, entryConstraints, functionCallContext); err == nil {
+			return self.NewValue(list_, notation, functionCallContext)
+		} else {
+			return nil, err
+		}
+	} else {
+		return nil, err
+	}
+}
+
+func (self *CloutContext) NewValueForMap(list ard.List, notation ard.StringMap, functionCallContext FunctionCallContext) (*Value, error) {
+	if keyConstraints, err := self.NewConstraintsFromNotation(notation, "keyConstraints", functionCallContext); err == nil {
+		if valueConstraints, err := self.NewConstraintsFromNotation(notation, "valueConstraints", functionCallContext); err == nil {
+			if map_, err := self.NewMap(list, keyConstraints, valueConstraints, functionCallContext); err == nil {
+				return self.NewValue(map_, notation, functionCallContext)
+			} else {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	} else {
+		return nil, err
+	}
 }
 
 // Coercible interface
 func (self *Value) Coerce() (interface{}, error) {
-	r := self.Value
+	data := self.Data
 
-	// Embedded Coercible (either a CoercibleList or a CoercibleMap)
-	if c, ok := r.(Coercible); ok {
-		var err error
-		r, err = c.Coerce()
-		if err != nil {
+	var err error
+	switch data.(type) {
+	case List:
+		if data, err = data.(List).Coerce(); err != nil {
+			return nil, err
+		}
+
+	case Map:
+		if data, err = data.(Map).Coerce(); err != nil {
 			return nil, err
 		}
 	}
 
-	return self.Constraints.Apply(r)
+	return self.Constraints.Apply(data)
+}
+
+// Coercible interface
+func (self *Value) SetConstraints(constraints Constraints) {
+	self.Constraints = constraints
+}
+
+// Coercible interface
+func (self *Value) Unwrap() interface{} {
+	return self.Notation
 }

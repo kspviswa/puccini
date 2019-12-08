@@ -1,13 +1,15 @@
 package js
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/dop251/goja"
 )
 
-func GetPlugins(name string, clout *CloutContext) ([]goja.Value, error) {
-	scripts, err := GetScripts(name, clout.Clout)
+func GetPlugins(name string, cloutContext *CloutContext) ([]goja.Value, error) {
+	scripts, err := GetScriptlets(name, cloutContext.Clout)
 	if err != nil {
 		return nil, nil
 	}
@@ -15,17 +17,24 @@ func GetPlugins(name string, clout *CloutContext) ([]goja.Value, error) {
 	var plugins []goja.Value
 
 	for _, value := range scripts {
-		sourceCode, ok := value.(string)
-		if !ok {
+		if _, ok := value.(string); !ok {
 			return nil, fmt.Errorf("plugin script is not a string: %T", value)
 		}
+	}
 
-		program, err := GetProgram("<plugin>", sourceCode)
+	sort.Slice(scripts, func(i, j int) bool {
+		return scripts[i].(string) < scripts[j].(string)
+	})
+
+	for _, value := range scripts {
+		scriptlet := value.(string)
+
+		program, err := cloutContext.Context.GetProgram("<plugin>", scriptlet)
 		if err != nil {
 			return nil, err
 		}
 
-		runtime := clout.NewRuntime()
+		runtime := cloutContext.NewRuntime(nil)
 		_, err = runtime.RunProgram(program)
 		if err != nil {
 			return nil, err
@@ -33,7 +42,7 @@ func GetPlugins(name string, clout *CloutContext) ([]goja.Value, error) {
 
 		plugin := runtime.Get("plugin")
 		if plugin == nil {
-			return nil, fmt.Errorf("plugin script does not define \"plugin\" variable")
+			return nil, errors.New("plugin script does not define \"plugin\" variable")
 		}
 
 		plugins = append(plugins, plugin)

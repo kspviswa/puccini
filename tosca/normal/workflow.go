@@ -5,12 +5,13 @@ package normal
 //
 
 type Workflow struct {
-	ServiceTemplate *ServiceTemplate        `json:"-" yaml:"-"`
-	Name            string                  `json:"-" yaml:"-"`
-	Description     string                  `json:"description" yaml:"description"`
-	Preconditions   []*WorkflowPrecondition `json:"preconditions" yaml:"preconditions"`
-	Steps           WorkflowSteps           `json:"steps" yaml:"steps"`
-	Inputs          Constrainables          `json:"inputs" yaml:"inputs"`
+	ServiceTemplate *ServiceTemplate `json:"-" yaml:"-"`
+	Name            string           `json:"-" yaml:"-"`
+
+	Description   string                  `json:"description" yaml:"description"`
+	Preconditions []*WorkflowPrecondition `json:"preconditions" yaml:"preconditions"`
+	Steps         WorkflowSteps           `json:"steps" yaml:"steps"`
+	Inputs        Constrainables          `json:"inputs" yaml:"inputs"`
 }
 
 func (self *ServiceTemplate) NewWorkflow(name string) *Workflow {
@@ -38,22 +39,25 @@ type Workflows map[string]*Workflow
 type WorkflowPrecondition struct {
 	TargetNodeTemplate *NodeTemplate ` json:"-" yaml:"-"`
 	TargetGroup        *Group        ` json:"-" yaml:"-"`
-	// Conditions
+	// TODO: Conditions
 }
 
 //
 // WorkflowStep
 //
 
+// TODO: JSON/YAML marshalling
+
 type WorkflowStep struct {
 	Workflow           *Workflow     `json:"-" yaml:"-"`
 	Name               string        `json:"-" yaml:"-"`
 	TargetNodeTemplate *NodeTemplate `json:"-" yaml:"-"`
 	TargetGroup        *Group        `json:"-" yaml:"-"`
-	// Filters
+	// TODO: Filters
 	OnSuccessSteps []*WorkflowStep     `json:"-" yaml:"-"`
 	OnFailureSteps []*WorkflowStep     `json:"-" yaml:"-"`
 	Activities     []*WorkflowActivity `json:"-" yaml:"-"`
+	Host           string              `json:"-" yaml:"-"`
 }
 
 func (self *Workflow) NewStep(name string) *WorkflowStep {

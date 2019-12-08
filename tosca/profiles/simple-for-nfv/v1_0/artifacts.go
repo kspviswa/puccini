@@ -1,4 +1,4 @@
-// This file was auto-generated from YAML files
+// This file was auto-generated from a YAML file
 
 package v1_0
 
@@ -12,15 +12,15 @@ func init() {
 #   This product includes software developed at
 #   The Apache Software Foundation (http://www.apache.org/).
 
-tosca_definitions_version: tosca_simple_yaml_1_1
+tosca_definitions_version: tosca_simple_yaml_1_2
 
 artifact_types:
 
   tosca.artifacts.nfv.SwImage:
     metadata:
       normative: 'true'
-      specification: tosca-simple-nfv-1.0
-      specification_section: 5.4.1
+      citation: '[TOSCA-Simple-Profile-NFV-v1.0-csd04]'
+      citation_location: 5.4.1
     derived_from: tosca.artifacts.Deployment.Image
     properties:
       name:
@@ -58,7 +58,7 @@ artifact_types:
           The minimal disk size requirement for this software image.
         type: scalar-unit.size
         required: false
-      size: # ARIA NOTE: section [5.4.1.1 Properties] calls this field 'Size'
+      size: # ERRATUM: section [5.4.1.1 Properties] calls this field 'Size'
         description: >-
           The size of this software image
         type: scalar-unit.size

@@ -10,16 +10,16 @@ import (
 
 func init() {
 	rootCmd.AddCommand(putCmd)
-	putCmd.Flags().StringVarP(&output, "output", "o", "", "output Clout to file (instead of stdout)")
+	putCmd.Flags().StringVarP(&output, "output", "o", "", "output Clout to file (default is stdout)")
 }
 
 var putCmd = &cobra.Command{
-	Use:   "put [COMMAND] [JavaScript PATH or URL] [[Clout PATH or URL]]",
-	Short: "Put JavaScript in Clout",
+	Use:   "put [NAME] [JavaScript PATH or URL] [[Clout PATH or URL]]",
+	Short: "Put JavaScript scriptlet in Clout",
 	Long:  ``,
 	Args:  cobra.RangeArgs(2, 3),
 	Run: func(cmd *cobra.Command, args []string) {
-		name := args[0]
+		scriptletName := args[0]
 		jsUrl := args[1]
 
 		var cloutPath string
@@ -27,19 +27,19 @@ var putCmd = &cobra.Command{
 			cloutPath = args[2]
 		}
 
-		c, err := ReadClout(cloutPath)
-		common.ValidateError(err)
+		clout, err := ReadClout(cloutPath)
+		common.FailOnError(err)
 
 		url_, err := url.NewValidURL(jsUrl, nil)
-		common.ValidateError(err)
+		common.FailOnError(err)
 
-		sourceCode, err := url.Read(url_)
-		common.ValidateError(err)
+		scriptlet, err := url.Read(url_)
+		common.FailOnError(err)
 
-		err = js.SetScriptSourceCode(name, js.Cleanup(sourceCode), c)
-		common.ValidateError(err)
+		err = js.SetScriptlet(scriptletName, js.CleanupScriptlet(scriptlet), clout)
+		common.FailOnError(err)
 
-		err = format.WriteOrPrint(c, ardFormat, true, output)
-		common.ValidateError(err)
+		err = format.WriteOrPrint(clout, ardFormat, pretty, output)
+		common.FailOnError(err)
 	},
 }

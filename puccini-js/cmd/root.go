@@ -9,16 +9,18 @@ import (
 )
 
 var logTo string
-var verbosity int
+var verbose int
 var ardFormat string
+var pretty bool
 
 var bashCompletionTo string
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&common.Quiet, "quiet", "q", false, "suppress output")
 	rootCmd.PersistentFlags().StringVarP(&logTo, "log", "l", "", "log to file (defaults to stderr)")
-	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbosity", "v", "add a log verbosity level (can be used twice)")
+	rootCmd.PersistentFlags().CountVarP(&verbose, "verbose", "v", "add a log verbosity level (can be used twice)")
 	rootCmd.PersistentFlags().StringVarP(&ardFormat, "format", "f", "", "force format (\"yaml\", \"json\", or \"xml\")")
+	rootCmd.PersistentFlags().BoolVarP(&pretty, "pretty", "p", true, "prettify output")
 
 	rootCmd.Flags().StringVarP(&bashCompletionTo, "bash-completion", "b", "", "generate bash completion file")
 }
@@ -29,11 +31,11 @@ var rootCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if logTo == "" {
 			if common.Quiet {
-				verbosity = -4
+				verbose = -4
 			}
-			common.ConfigureLogging(verbosity, nil)
+			common.ConfigureLogging(verbose, nil)
 		} else {
-			common.ConfigureLogging(verbosity, &logTo)
+			common.ConfigureLogging(verbose, &logTo)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -48,5 +50,5 @@ var rootCmd = &cobra.Command{
 
 func Execute() {
 	err := rootCmd.Execute()
-	common.ValidateError(err)
+	common.FailOnError(err)
 }

@@ -15,15 +15,19 @@ Usage:
 
     $TOOL [CSAR file path] [archive directory ...]
 
-Automatically adds a "TOSCA-Metadata/TOSCA.meta" file for you. 
-
 The current directory will be the root of the CSAR, so make sure to run this
-tool in the right place. Specify "." to archive the current directory.
+tool in the right place.
 
-You may set the "ENTRY_DEFINITIONS" environment variable to specify the path
-to your service template YAML file (relative to the root). Otherwise, any YAML
-file in the root will be used automatically. This will fail if you have more
-than one YAML file in the root, in which case you *must* explicitly set
+Specify "." to archive the current directory. Note that you may specify more
+than one directory to add to your CSAR.
+
+Will automatically create and add a "TOSCA-Metadata/TOSCA.meta" file to the
+archive.
+
+You can set the "ENTRY_DEFINITIONS" environment variable to specify the path
+to your service template YAML file (relative to the root). Otherwise, if
+there's a single YAML file in the root it will be used automatically. If
+there's more than one YAML file in the root then you *must* explicitly set
 "ENTRY_DEFINITIONS".
 
 Other supported environment variables:
@@ -32,13 +36,11 @@ Other supported environment variables:
     CSAR_VERSION
     CREATED_BY
 
-Note that you may specify more than one directory to add to your CSAR.
-
 EOT
 	exit 1
 fi
 
-CSAR=$(realpath "$1")
+CSAR=$(readlink -f "$1")
 
 if [ -f "$CSAR" ]; then
 	echo "CSAR already exists, deleting: $CSAR"
@@ -52,7 +54,7 @@ for D in "${@:2}"; do
 		echo "failed: not a directory: $D" > /dev/stderr
 		exit 1
 	fi
-	zip --recurse-paths "$CSAR" "$D" > /dev/null
+	zip -9 --recurse-paths "$CSAR" "$D" > /dev/null
 done
 
 if [ -z "$ENTRY_DEFINITIONS" ]; then
@@ -61,14 +63,14 @@ if [ -z "$ENTRY_DEFINITIONS" ]; then
 	IFS=$'\n'
 	for F in $(zipinfo -1 "$CSAR"); do
 		if [ "$(dirname "$F")" == . ]; then
-			EXT="${F##*.}"
+			EXT=${F##*.}
 			if [ "$EXT" == yaml ] || [ "$EXT" == yml ]; then
 				if [ -n "$ENTRY_DEFINITIONS" ]; then
-					echo 'failed: multiple yaml files in root, set ENTRY_DEFINITIONS in environment' > /dev/stderr
+					echo 'failed: multiple YAML files in root, you must set ENTRY_DEFINITIONS in environment to choose one' > /dev/stderr
 					rm "$CSAR"
 					exit 1
 				fi
-				ENTRY_DEFINITIONS="$F"
+				ENTRY_DEFINITIONS=$F
 			fi
 		fi
 	done
@@ -80,6 +82,19 @@ echo "Entry-Definitions: $ENTRY_DEFINITIONS"
 
 TEMP_ROOT=$(mktemp --directory)
 
+function the_end () {
+	local ERR=$?
+	rm --recursive "$TEMP_ROOT"
+	if [ "$ERR" == 0 ]; then
+		echo "CSAR created: $CSAR"
+	else
+		echo "failed" > /dev/stderr
+		exit $ERR
+	fi
+}
+
+trap the_end EXIT
+
 cd "$TEMP_ROOT"
 mkdir TOSCA-Metadata
 
@@ -90,7 +105,4 @@ Created-By: $CREATED_BY
 Entry-Definitions: $ENTRY_DEFINITIONS
 EOT
 
-zip --recurse-paths "$CSAR" . > /dev/null
-rm --recursive "$TEMP_ROOT"
-
-echo "CSAR created: $CSAR"
+zip -9 --recurse-paths "$CSAR" . > /dev/null

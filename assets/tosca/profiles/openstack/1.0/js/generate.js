@@ -19,15 +19,13 @@ writeClouds();
 writeCfg();
 
 function writeTopology() {
-	servers = [];
-	
-	for (v in clout.vertexes) {
-		vertex = clout.vertexes[v];
-		if (!tosca.isNodeTemplate(vertex, 'openstack.Nova.Server'))
+	var servers = [];
+
+	for (var vertexId in clout.vertexes) {
+		var vertex = clout.vertexes[vertexId];
+		if (!tosca.isNodeTemplate(vertex, 'openstack.nova.Server'))
 			continue;
-		nodeTemplate = vertex.properties;
-		
-		//puccini.log.errorf('%s', JSON.stringify(nodeTemplate, null, '  '));
+		var nodeTemplate = vertex.properties;
 
 		servers.push({
 			name: nodeTemplate.name,
@@ -49,10 +47,10 @@ function writePlaybookInstall() {
 			name: 'Configure OpenStack',
 			os_client_config: null,
 		}, {
-			name: 'Import topology.yaml',
+			name: 'Import topology.' + puccini.format,
 			include_vars: {
 				name: 'topology',
-				file: 'topology.yaml'
+				file: 'topology.' + puccini.format
 			}
 		}, {
 			include_role: {
@@ -89,7 +87,7 @@ function writeRoleKeypair() {
 			}
 		}, {
 			file: {
-				mode: 0600, // required by ssh
+				mode: 384, // = octal 0600, required by ssh
 				dest: '{{ playbook_dir }}/keys/{{ keypair.key.name }}'
 			}
 		}, {
@@ -150,7 +148,7 @@ function writeClouds() {
 		clouds: {
 			'default': {
 				auth: {
-					auth_url: 'AUTH_URL'
+					auth_url: 'AUTH_URL',
 					username: 'USERNAME',
 					password: 'PASSWORD'
 				}
@@ -163,7 +161,7 @@ function writeCfg() {
 	puccini.write('\
 [defaults]\n\
 ansible_managed=Modified by Ansible on %Y-%m-%d %H:%M:%S %Z\n\
-inventory=./inventory.yaml\n\
+inventory=./inventory.' + puccini.format +'\n\
 transport=ssh\n\
 command_warnings=false\n\
 \n\

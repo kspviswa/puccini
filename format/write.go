@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/beevik/etree"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func Write(data interface{}, format string, indent string, writer io.Writer) error {
@@ -24,7 +24,7 @@ func Write(data interface{}, format string, indent string, writer io.Writer) err
 
 	switch format {
 	case "yaml", "":
-		return WriteYaml(data, writer)
+		return WriteYaml(data, writer, indent)
 	case "json":
 		return WriteJson(data, writer, indent)
 	case "xml":
@@ -34,14 +34,15 @@ func Write(data interface{}, format string, indent string, writer io.Writer) err
 	}
 }
 
-func WriteYaml(data interface{}, writer io.Writer) error {
+func WriteYaml(data interface{}, writer io.Writer, indent string) error {
 	encoder := yaml.NewEncoder(writer)
+	// BUG: currently does not allow a value of 1, see: https://github.com/go-yaml/yaml/issues/501
+	encoder.SetIndent(len(indent)) // This might not work as expected for tabs!
 	if slice, ok := data.([]interface{}); ok {
 		// YAML separates each entry with "---"
 		// (In JSON the slice would be written as an array)
 		for _, d := range slice {
-			err := encoder.Encode(d)
-			if err != nil {
+			if err := encoder.Encode(d); err != nil {
 				return err
 			}
 		}
@@ -58,6 +59,8 @@ func WriteJson(data interface{}, writer io.Writer, indent string) error {
 }
 
 func WriteXml(data interface{}, writer io.Writer, indent string) error {
+	// Because we don't provide explicit marshalling for XML in the codebase (as we do for
+	// JSON and YAML) then we must normalize the data before encoding it
 	data, err := Normalize(data)
 	if err != nil {
 		return err
@@ -65,13 +68,22 @@ func WriteXml(data interface{}, writer io.Writer, indent string) error {
 
 	data = EnsureXml(data)
 
-	_, err = io.WriteString(writer, xml.Header)
-	if err != nil {
+	if _, err := io.WriteString(writer, xml.Header); err != nil {
 		return err
 	}
 	encoder := xml.NewEncoder(writer)
 	encoder.Indent("", indent)
-	return encoder.Encode(data)
+	if err := encoder.Encode(data); err != nil {
+		return err
+	}
+	if indent == "" {
+		// When there's no indent the XML encoder does not emit a final newline
+		// (We want it for consistency with YAML and JSON)
+		if _, err := io.WriteString(writer, "\n"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func WriteXmlDocument(xmlDocument *etree.Document, writer io.Writer, indent string) error {

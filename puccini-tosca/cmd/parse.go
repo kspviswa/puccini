@@ -2,35 +2,37 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tliron/puccini/ard"
 	"github.com/tliron/puccini/common"
 	"github.com/tliron/puccini/format"
 	"github.com/tliron/puccini/tosca"
-	"github.com/tliron/puccini/tosca/compiler"
 	"github.com/tliron/puccini/tosca/normal"
 	"github.com/tliron/puccini/tosca/parser"
 	"github.com/tliron/puccini/url"
+	"github.com/tliron/yamlkeys"
 )
 
 var inputs []string
+var inputsUrl string
 var stopAtPhase uint32
-var printPhases []uint
-var coerce bool
-var examine string
+var dumpPhases []uint
+var filter string
 
 var inputValues = make(map[string]interface{})
 
 func init() {
 	rootCmd.AddCommand(parseCmd)
-	parseCmd.Flags().StringArrayVarP(&inputs, "input", "i", []string{}, "specify an input (name=value)")
-	parseCmd.Flags().Uint32VarP(&stopAtPhase, "stop", "s", 6, "parser phase at which to stop")
-	parseCmd.Flags().UintSliceVarP(&printPhases, "print", "p", nil, "parser phases to print")
-	parseCmd.Flags().BoolVarP(&coerce, "coerce", "c", false, "emit final values (calls intrinsic functions)")
-	parseCmd.Flags().StringVarP(&examine, "examine", "e", "", "examine entities with path, may use '*' for wildcards (disables --print)")
+	parseCmd.Flags().StringArrayVarP(&inputs, "input", "i", []string{}, "specify an input (name=YAML)")
+	parseCmd.Flags().StringVarP(&inputsUrl, "inputs", "n", "", "load inputs from a PATH or URL to YAML content")
+	parseCmd.Flags().Uint32VarP(&stopAtPhase, "stop", "s", 5, "parser phase at which to end")
+	parseCmd.Flags().UintSliceVarP(&dumpPhases, "dump", "d", nil, "dump phase internals")
+	parseCmd.Flags().StringVarP(&filter, "filter", "t", "", "filter output by entity path; use '*' for wildcard matching (disables --stop and --dump)")
 }
 
 var parseCmd = &cobra.Command{
@@ -44,20 +46,20 @@ var parseCmd = &cobra.Command{
 			urlString = args[0]
 		}
 
-		if examine != "" {
-			// Examine cancels printing phases
-			printPhases = nil
+		if filter != "" {
+			stopAtPhase = 5
+			dumpPhases = nil
 		}
 
-		s := Parse(urlString)
+		_, s := Parse(urlString)
 
-		if (examine == "") && (len(printPhases) == 0) {
-			format.Print(s, ardFormat, true)
+		if (filter == "") && (len(dumpPhases) == 0) {
+			format.Print(s, ardFormat, pretty)
 		}
 	},
 }
 
-func Parse(urlString string) *normal.ServiceTemplate {
+func Parse(urlString string) (parser.Context, *normal.ServiceTemplate) {
 	ParseInputs()
 
 	var url_ url.URL
@@ -69,9 +71,7 @@ func Parse(urlString string) *normal.ServiceTemplate {
 		log.Infof("parsing %s", urlString)
 		url_, err = url.NewValidURL(urlString, nil)
 	}
-	common.ValidateError(err)
-
-	var s *normal.ServiceTemplate
+	common.FailOnError(err)
 
 	context := parser.NewContext(quirks)
 
@@ -94,7 +94,7 @@ func Parse(urlString string) *normal.ServiceTemplate {
 		}
 
 		if !common.Quiet && ToPrintPhase(1) {
-			if len(printPhases) > 1 {
+			if len(dumpPhases) > 1 {
 				fmt.Fprintf(format.Stdout, "%s\n", format.ColorHeading("Imports"))
 			}
 			context.PrintImports(1)
@@ -106,7 +106,7 @@ func Parse(urlString string) *normal.ServiceTemplate {
 		context.AddNamespaces()
 		context.LookupNames()
 		if !common.Quiet && ToPrintPhase(2) {
-			if len(printPhases) > 1 {
+			if len(dumpPhases) > 1 {
 				fmt.Fprintf(format.Stdout, "%s\n", format.ColorHeading("Namespaces"))
 			}
 			context.PrintNamespaces(1)
@@ -117,7 +117,7 @@ func Parse(urlString string) *normal.ServiceTemplate {
 	if stopAtPhase >= 3 {
 		context.AddHierarchies()
 		if !common.Quiet && ToPrintPhase(3) {
-			if len(printPhases) > 1 {
+			if len(dumpPhases) > 1 {
 				fmt.Fprintf(format.Stdout, "%s\n", format.ColorHeading("Hierarchies"))
 			}
 			context.PrintHierarchies(1)
@@ -128,12 +128,16 @@ func Parse(urlString string) *normal.ServiceTemplate {
 	if stopAtPhase >= 4 {
 		tasks := context.GetInheritTasks()
 		if !common.Quiet && ToPrintPhase(4) {
-			if len(printPhases) > 1 {
+			if len(dumpPhases) > 1 {
 				fmt.Fprintf(format.Stdout, "%s\n", format.ColorHeading("Inheritance Tasks"))
 			}
 			tasks.Print(1)
 		}
 		tasks.Drain()
+	}
+
+	if context.ServiceTemplate == nil {
+		return context, nil
 	}
 
 	parser.SetInputs(context.ServiceTemplate.EntityPtr, inputValues)
@@ -143,47 +147,26 @@ func Parse(urlString string) *normal.ServiceTemplate {
 		entityPtrs := context.Render()
 		if !common.Quiet && ToPrintPhase(5) {
 			sort.Sort(entityPtrs)
-			if len(printPhases) > 1 {
+			if len(dumpPhases) > 1 {
 				fmt.Fprintf(format.Stdout, "%s\n", format.ColorHeading("Rendering"))
 			}
 			for _, entityPtr := range entityPtrs {
-				fmt.Fprintf(format.Stdout, "%s:\n", format.ColorPath(tosca.GetContext(entityPtr).Path))
-				err = format.Print(entityPtr, ardFormat, true)
-				common.ValidateError(err)
+				fmt.Fprintf(format.Stdout, "%s:\n", format.ColorPath(tosca.GetContext(entityPtr).Path.String()))
+				err = format.Print(entityPtr, ardFormat, pretty)
+				common.FailOnError(err)
 			}
 		}
 	}
 
-	// Phase 6: Topology
-	if stopAtPhase >= 6 {
-		var ok bool
-		if s, ok = parser.Normalize(context.ServiceTemplate.EntityPtr); ok {
-			if coerce {
-				// Check for coercion problems
-				clout, err := compiler.Compile(s)
-				common.ValidateError(err)
-				compiler.Coerce(clout, context.Problems)
-			}
-
-			// Only print if there are no problems
-			if !common.Quiet && ToPrintPhase(6) && context.Problems.Empty() {
-				fmt.Fprintf(format.Stdout, "%s\n", format.ColorHeading("Topology"))
-				s.PrintRelationships(1)
-			}
-		}
-	}
-
-	if examine != "" {
-		entityPtrs := context.Gather(examine)
+	if filter != "" {
+		entityPtrs := context.Gather(filter)
 		if len(entityPtrs) == 0 {
-			common.Errorf("Examine path not found: \"%s\"\n", examine)
+			common.Failf("No paths found matching filter: \"%s\"\n", filter)
 		} else if !common.Quiet {
 			for _, entityPtr := range entityPtrs {
-				if len(entityPtrs) > 0 {
-					fmt.Fprintf(format.Stdout, "%s\n", format.ColorPath(tosca.GetContext(entityPtr).Path))
-				}
-				err = format.Print(entityPtr, ardFormat, true)
-				common.ValidateError(err)
+				fmt.Fprintf(format.Stdout, "%s\n", format.ColorPath(tosca.GetContext(entityPtr).Path.String()))
+				err = format.Print(entityPtr, ardFormat, pretty)
+				common.FailOnError(err)
 			}
 		}
 	}
@@ -196,11 +179,17 @@ func Parse(urlString string) *normal.ServiceTemplate {
 		os.Exit(1)
 	}
 
-	return s
+	// Normalize
+	s, ok := parser.Normalize(context.ServiceTemplate.EntityPtr)
+	if !ok {
+		common.Fail("grammar does not support normalization")
+	}
+
+	return context, s
 }
 
 func ToPrintPhase(phase uint) bool {
-	for _, p := range printPhases {
+	for _, p := range dumpPhases {
 		if p == phase {
 			return true
 		}
@@ -209,13 +198,33 @@ func ToPrintPhase(phase uint) bool {
 }
 
 func ParseInputs() {
+	if inputsUrl != "" {
+		log.Infof("load inputs from %s", inputsUrl)
+		url_, err := url.NewValidURL(inputsUrl, nil)
+		common.FailOnError(err)
+		reader, err := url_.Open()
+		common.FailOnError(err)
+		if readerCloser, ok := reader.(io.ReadCloser); ok {
+			defer readerCloser.Close()
+		}
+		data, err := format.Read(reader, "yaml")
+		common.FailOnError(err)
+		if map_, ok := data.(ard.Map); ok {
+			for key, value := range map_ {
+				inputValues[yamlkeys.KeyString(key)] = value
+			}
+		} else {
+			common.Failf("malformed inputs in %s", inputsUrl)
+		}
+	}
+
 	for _, input := range inputs {
 		s := strings.SplitN(input, "=", 2)
 		if len(s) != 2 {
-			common.Errorf("malformed input: %s", input)
+			common.Failf("malformed input: %s", input)
 		}
 		value, err := format.Decode(s[1], "yaml")
-		common.ValidateError(err)
+		common.FailOnError(err)
 		inputValues[s[0]] = value
 	}
 }

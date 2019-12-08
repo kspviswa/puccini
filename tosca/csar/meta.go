@@ -15,6 +15,7 @@ var CsarVersion = Version{1, 1}
 //
 
 // See:
+//  https://docs.oasis-open.org/tosca/TOSCA-Simple-Profile-YAML/v1.2/os/TOSCA-Simple-Profile-YAML-v1.2-os.html#_Toc528072959
 //  http://docs.oasis-open.org/tosca/TOSCA-Simple-Profile-YAML/v1.1/os/TOSCA-Simple-Profile-YAML-v1.1-os.html#_Toc489606742
 //  http://docs.oasis-open.org/tosca/TOSCA/v1.0/os/TOSCA-v1.0-os.html#_Toc356403713
 
@@ -64,23 +65,21 @@ func ReadMeta(reader io.Reader) (*Meta, error) {
 		}
 	}
 
-	err := scanner.Err()
-	if err != nil {
+	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
 	self := &Meta{}
 
 	for name, value := range data {
+		var err error
 		switch name {
 		case "TOSCA-Meta-File-Version":
-			self.MetaVersion, err = ParseVersion(value)
-			if err != nil {
+			if self.MetaVersion, err = ParseVersion(value); err != nil {
 				return nil, err
 			}
 		case "CSAR-Version":
-			self.CsarVersion, err = ParseVersion(value)
-			if err != nil {
+			if self.CsarVersion, err = ParseVersion(value); err != nil {
 				return nil, err
 			}
 		case "Created-By":
@@ -90,8 +89,7 @@ func ReadMeta(reader io.Reader) (*Meta, error) {
 		}
 	}
 
-	err = require(data, "TOSCA-Meta-File-Version", "CSAR-Version", "Created-By")
-	if err != nil {
+	if err := require(data, "TOSCA-Meta-File-Version", "CSAR-Version", "Created-By"); err != nil {
 		return nil, err
 	}
 
@@ -107,8 +105,7 @@ func ReadMeta(reader io.Reader) (*Meta, error) {
 
 func require(data map[string]string, names ...string) error {
 	for _, name := range names {
-		_, ok := data[name]
-		if !ok {
+		if _, ok := data[name]; !ok {
 			return fmt.Errorf("TOSCA.meta does not contain required \"%s\"", name)
 		}
 	}
